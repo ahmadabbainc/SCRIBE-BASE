@@ -35,7 +35,7 @@
   ];
 
   const PERSIST = ['provider', 'key', 'model', 'language', 'prompt', 'chars', 'dur',
-                   'trim', 'keep', 'fillers', 'repeats', 'silence', 'extra'];
+                   'fillers', 'repeats', 'silence', 'extra'];
 
   // ------------------------------------------------------------- state
   let files = [];
@@ -135,7 +135,6 @@
   }
 
   function updateReadouts() {
-    $('keepVal').textContent = Number($('keep').value).toFixed(2) + ' s';
     $('charsVal').textContent = $('chars').value;
     $('durVal').textContent = $('dur').value + ' s';
   }
@@ -169,7 +168,7 @@
     $('formats').addEventListener('change', updateFmtSummary);
     document.querySelectorAll('#settings input, #settings select, #settings textarea, .card input')
       .forEach(el => el.addEventListener('change', saveSettings));
-    ['keep', 'chars', 'dur'].forEach(id => $(id).addEventListener('input', updateReadouts));
+    ['chars', 'dur'].forEach(id => $(id).addEventListener('input', updateReadouts));
 
     $('showKey').addEventListener('click', () => {
       const k = $('key');
@@ -352,53 +351,20 @@
       return null;
     }
 
-    let trimmed = null;
-    let trimNote = '';
-
-    if (opts.trim) {
-      try {
-        const spans = E.planTrim(words, opts.keep, duration, sr);
-        if (!spans.length) {
-          trimNote = 'Nothing to trim.';
-        } else {
-          setProgress(at(0.93), 'Trimming ' + file.name + '…');
-          await sleep(30);
-          const wavBuf = E.renderTrimmedWav(pcm, sr, spans);
-          const remap = E.makeRemap(spans);
-          kept.forEach(w => { w.start = remap(w.start); w.end = remap(w.end); });
-          trimmed = { name: base + '_Trimmed.wav', blob: new Blob([wavBuf], { type: 'audio/wav' }), length: remap.total };
-          trimNote = 'audio ' + E.clock(duration) + ' to ' + E.clock(remap.total);
-        }
-      } catch (e) {
-        notes.push({ text: file.name + ': audio trimming failed (' + e.message + '). Subtitles use the original timing.', warn: true });
-      }
-    }
-
     // ---- Build text outputs
     const texts = E.buildTexts(kept, opts.formats, lang, opts.chars, opts.dur);
     const prefix = total > 1 ? (idx + 1) + ' · ' : '';
     const items = opts.formats.map(f => ({
-      kind: 'text',
       label: prefix + f,
       name: base + E.SUFFIX[f],
       text: texts[f],
       blob: new Blob([texts[f]], { type: 'text/plain;charset=utf-8' })
     }));
-    if (trimmed) {
-      items.push({
-        kind: 'audio',
-        label: prefix + 'Trimmed audio',
-        name: trimmed.name,
-        blob: trimmed.blob,
-        length: trimmed.length
-      });
-    }
 
     const took = Math.max(1, Math.round((Date.now() - started) / 1000));
     let line = file.name + ': ' + E.clock(duration) + ' of audio, ' + kept.length + ' words, ' + took + 's';
     const removed = stats.fillers + stats.repeats;
     if (removed) line += ', removed ' + stats.fillers + ' fillers and ' + stats.repeats + ' repeats';
-    if (trimNote) line += ', ' + trimNote;
     notes.push({ text: line, warn: false });
     if (usedSegments) {
       notes.push({ text: file.name + ': word timing was not available, so phrases were used instead. Filler removal may be less precise.', warn: true });
@@ -421,8 +387,6 @@
 
     const opts = {
       formats: E.FORMATS.filter(f => selectedFormats().includes(f)),
-      trim: $('trim').checked,
-      keep: Number($('keep').value),
       fillers: $('fillers').checked,
       repeats: $('repeats').checked,
       silence: $('silence').checked,
@@ -530,18 +494,7 @@
     current = i;
     const it = results.items[i];
 
-    if (it.kind === 'text') {
-      $('preview').value = it.text;
-    } else {
-      $('preview').value =
-        'Trimmed audio is ready.\n\n' +
-        'File: ' + it.name + '\n' +
-        'Length: ' + E.clock(it.length) + '\n' +
-        'Size: ' + fmtSize(it.blob.size) + '\n\n' +
-        'Tap Download to save it.';
-    }
-
-    $('copy').hidden = it.kind !== 'text';
+    $('preview').value = it.text;
     $('download').textContent = 'Download ' + it.name.split('.').pop().toUpperCase();
 
     document.querySelectorAll('#tabs .tab').forEach(b => {
@@ -568,7 +521,7 @@
 
   function copyPreview() {
     const it = results && results.items[current];
-    if (it && it.kind === 'text') copyText(it.text, it.label);
+    if (it) copyText(it.text, it.label);
   }
 
   // ---------------------------------------------------------- download
