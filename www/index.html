@@ -102,9 +102,9 @@ label.field { display: block; margin-top: 12px; font-weight: 600; font-size: .92
 .keyrow input { flex: 1; }
 .keyrow button { margin-top: 6px; min-width: 64px; border: 1px solid var(--line); background: #0E1319; color: var(--muted); border-radius: 10px; font: inherit; }
 
-details.card summary { cursor: pointer; font-weight: 650; list-style: none; }
+details.card summary { position: relative; display: block; padding-right: 60px; cursor: pointer; font-weight: 650; list-style: none; }
 details.card summary::-webkit-details-marker { display: none; }
-details.card summary::after { content: "Show"; float: right; color: var(--muted); font-weight: 400; font-size: .86rem; }
+details.card summary::after { content: "Show"; position: absolute; right: 0; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 400; font-size: .86rem; }
 details.card[open] summary::after { content: "Hide"; }
 details.card[open] > summary { margin-bottom: 12px; }
 .sum { display: block; margin-top: 2px; font-weight: 400; font-size: .86rem; color: var(--muted); overflow-wrap: anywhere; }
@@ -276,11 +276,10 @@ textarea#preview {
     <ul id="notes" class="notes"></ul>
     <div id="tabs" class="tabs"></div>
     <textarea id="preview" readonly></textarea>
-    <div class="actions">
+    <div id="actions" class="actions">
       <button id="copy" class="btn">Copy text</button>
-      <button id="downloadAll" class="btn primary">Download all</button>
+      <button id="download" class="btn primary">Download</button>
     </div>
-    <div id="outFiles"></div>
   </section>
 
 </main>

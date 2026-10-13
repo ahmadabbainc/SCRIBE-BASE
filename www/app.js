@@ -42,7 +42,7 @@
   let cancelled = false;
   let abortCtl = null;
   let results = null;
-  let previewFormat = '';
+  let current = 0;
 
   // ----------------------------------------------------------- storage
   const store = {
@@ -194,7 +194,9 @@
     });
 
     $('copy').addEventListener('click', copyPreview);
-    $('downloadAll').addEventListener('click', () => results && downloadFiles(results.files));
+    $('download').addEventListener('click', () => {
+      if (results && results.items[current]) downloadFiles([results.items[current]]);
+    });
   }
 
   // ------------------------------------------------------------- audio
@@ -350,7 +352,7 @@
       return null;
     }
 
-    const outFiles = [];
+    let trimmed = null;
     let trimNote = '';
 
     if (opts.trim) {
@@ -364,7 +366,7 @@
           const wavBuf = E.renderTrimmedWav(pcm, sr, spans);
           const remap = E.makeRemap(spans);
           kept.forEach(w => { w.start = remap(w.start); w.end = remap(w.end); });
-          outFiles.push({ name: base + '_Trimmed.wav', blob: new Blob([wavBuf], { type: 'audio/wav' }) });
+          trimmed = { name: base + '_Trimmed.wav', blob: new Blob([wavBuf], { type: 'audio/wav' }), length: remap.total };
           trimNote = 'audio ' + E.clock(duration) + ' to ' + E.clock(remap.total);
         }
       } catch (e) {
@@ -374,11 +376,23 @@
 
     // ---- Build text outputs
     const texts = E.buildTexts(kept, opts.formats, lang, opts.chars, opts.dur);
-    const textFiles = opts.formats.map(f => ({
+    const prefix = total > 1 ? (idx + 1) + ' · ' : '';
+    const items = opts.formats.map(f => ({
+      kind: 'text',
+      label: prefix + f,
       name: base + E.SUFFIX[f],
       text: texts[f],
       blob: new Blob([texts[f]], { type: 'text/plain;charset=utf-8' })
     }));
+    if (trimmed) {
+      items.push({
+        kind: 'audio',
+        label: prefix + 'Trimmed audio',
+        name: trimmed.name,
+        blob: trimmed.blob,
+        length: trimmed.length
+      });
+    }
 
     const took = Math.max(1, Math.round((Date.now() - started) / 1000));
     let line = file.name + ': ' + E.clock(duration) + ' of audio, ' + kept.length + ' words, ' + took + 's';
@@ -390,7 +404,7 @@
       notes.push({ text: file.name + ': word timing was not available, so phrases were used instead. Filler removal may be less precise.', warn: true });
     }
 
-    return { texts, files: textFiles.concat(outFiles) };
+    return { items };
   }
 
   async function run() {
@@ -437,17 +451,14 @@
     $('progressCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     const notes = [];
-    const all = { texts: null, files: [] };
+    const all = { items: [] };
     let failure = '';
 
     try {
       for (let i = 0; i < files.length; i++) {
         if (cancelled) break;
         const r = await processFile(files[i], i, files.length, cfg, opts, notes);
-        if (r) {
-          if (!all.texts) all.texts = r.texts;
-          all.files = all.files.concat(r.files);
-        }
+        if (r) all.items = all.items.concat(r.items);
       }
     } catch (e) {
       if (!cancelled && e.message !== 'Stopped') failure = e.message || String(e);
@@ -462,7 +473,7 @@
     if (failure) notes.push({ text: failure, warn: true });
     if (cancelled) notes.push({ text: 'Stopped before finishing.', warn: true });
 
-    if (all.files.length) {
+    if (all.items.length) {
       results = all;
       renderResults(notes);
     } else {
@@ -487,8 +498,8 @@
   function renderNotesOnly(notes) {
     renderNotes(notes);
     $('tabs').innerHTML = '';
-    $('preview').value = '';
-    $('outFiles').innerHTML = '';
+    $('preview').hidden = true;
+    $('actions').hidden = true;
     $('results').hidden = false;
   }
 
@@ -497,49 +508,44 @@
 
     const tabs = $('tabs');
     tabs.innerHTML = '';
-    const formats = results.texts ? Object.keys(results.texts) : [];
-    formats.forEach(f => {
+    results.items.forEach((it, i) => {
       const b = document.createElement('button');
-      b.className = 'tab'; b.textContent = f; b.type = 'button';
-      b.addEventListener('click', () => showPreview(f));
+      b.className = 'tab';
+      b.type = 'button';
+      b.textContent = it.label;
+      b.dataset.i = String(i);
+      b.addEventListener('click', () => showItem(i));
       tabs.appendChild(b);
     });
-    if (formats.length) showPreview(formats[0]); else $('preview').value = '';
 
-    const box = $('outFiles');
-    box.innerHTML = '';
-    results.files.forEach(f => {
-      const row = document.createElement('div');
-      row.className = 'out';
-      const left = document.createElement('div');
-      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = f.name;
-      const sz = document.createElement('div'); sz.className = 'sz'; sz.textContent = fmtSize(f.blob.size);
-      left.append(nm, sz);
-      const btns = document.createElement('div');
-      btns.className = 'btns';
-      if (f.text) {
-        const c = document.createElement('button');
-        c.className = 'btn'; c.type = 'button'; c.textContent = 'Copy';
-        c.addEventListener('click', () => copyText(f.text, f.name));
-        btns.appendChild(c);
-      }
-      const d = document.createElement('button');
-      d.className = 'btn'; d.type = 'button'; d.textContent = 'Download';
-      d.addEventListener('click', () => downloadFiles([f]));
-      btns.appendChild(d);
-      row.append(left, btns);
-      box.appendChild(row);
-    });
+    $('preview').hidden = false;
+    $('actions').hidden = false;
+    showItem(0);
 
     $('results').hidden = false;
     $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  function showPreview(f) {
-    previewFormat = f;
-    $('preview').value = results.texts[f] || '';
+  function showItem(i) {
+    current = i;
+    const it = results.items[i];
+
+    if (it.kind === 'text') {
+      $('preview').value = it.text;
+    } else {
+      $('preview').value =
+        'Trimmed audio is ready.\n\n' +
+        'File: ' + it.name + '\n' +
+        'Length: ' + E.clock(it.length) + '\n' +
+        'Size: ' + fmtSize(it.blob.size) + '\n\n' +
+        'Tap Download to save it.';
+    }
+
+    $('copy').hidden = it.kind !== 'text';
+    $('download').textContent = 'Download ' + it.name.split('.').pop().toUpperCase();
+
     document.querySelectorAll('#tabs .tab').forEach(b => {
-      b.setAttribute('aria-pressed', b.textContent === f ? 'true' : 'false');
+      b.setAttribute('aria-pressed', b.dataset.i === String(i) ? 'true' : 'false');
     });
   }
 
@@ -561,7 +567,8 @@
   }
 
   function copyPreview() {
-    copyText($('preview').value, previewFormat);
+    const it = results && results.items[current];
+    if (it && it.kind === 'text') copyText(it.text, it.label);
   }
 
   // ---------------------------------------------------------- download
