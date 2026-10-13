@@ -1,0 +1,9 @@
+{
+  "appId": "com.audiotranscriber.studio",
+  "appName": "Audio Transcriber Studio",
+  "webDir": "www",
+  "backgroundColor": "#0E1116",
+  "android": {
+    "allowMixedContent": false
+  }
+}

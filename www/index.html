@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Audio Transcriber Studio</title>
+<style>
+:root {
+  --bg: #0E1116;
+  --panel: #151A22;
+  --line: rgba(255,255,255,.09);
+  --text: #E9EDF2;
+  --muted: #93A0B1;
+  --amber: #F5B544;
+  --amber-hi: #FFC85F;
+  --bad: #FF8A8A;
+  --radius: 14px;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { background: var(--bg); }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+main { max-width: 640px; margin: 0 auto; padding: 8px 16px 130px; }
+
+.hero { padding: 22px 2px 8px; }
+.mark { display: flex; align-items: flex-end; gap: 4px; height: 32px; margin-bottom: 12px; }
+.mark i { display: block; width: 5px; border-radius: 3px; background: var(--amber); }
+h1 { font-size: 1.75rem; line-height: 1.15; letter-spacing: -.02em; margin: 0; }
+.hero p { margin: 6px 0 0; color: var(--muted); }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-top: 12px;
+}
+h2 { font-size: 1rem; margin: 0 0 10px; font-weight: 650; }
+.hint { color: var(--muted); font-size: .86rem; margin: 4px 0 0; }
+
+.pick {
+  display: block;
+  text-align: center;
+  padding: 18px 12px;
+  border: 1.5px dashed rgba(245,181,68,.55);
+  border-radius: 12px;
+  color: var(--amber);
+  font-weight: 600;
+  cursor: pointer;
+}
+.pick:active { background: rgba(245,181,68,.08); }
+.files { list-style: none; margin: 10px 0 0; padding: 0; }
+.files li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: .92rem; }
+.files li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files li span:last-child { color: var(--muted); flex: none; }
+.link { background: none; border: 0; color: var(--muted); padding: 8px 0 0; font: inherit; font-size: .86rem; text-decoration: underline; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip input { position: absolute; opacity: 0; pointer-events: none; }
+.chip span {
+  display: inline-block;
+  padding: 9px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: .92rem;
+  color: var(--muted);
+}
+.chip input:checked + span { background: rgba(245,181,68,.14); border-color: var(--amber); color: var(--text); }
+.chip input:focus-visible + span { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+.row { display: flex; align-items: flex-start; gap: 12px; padding: 9px 0; }
+.row input[type=checkbox] { width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--amber); flex: none; }
+.row b { font-weight: 600; display: block; }
+.row small { color: var(--muted); display: block; }
+
+label.field { display: block; margin-top: 12px; font-weight: 600; font-size: .92rem; }
+.field input[type=text], .field input[type=password], .field select, .field textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  min-height: 46px;
+  padding: 10px 12px;
+  background: #0E1319;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 400;
+}
+.field input[type=range] { width: 100%; margin-top: 8px; accent-color: var(--amber); }
+.field .val { float: right; color: var(--amber); font-weight: 600; }
+.keyrow { display: flex; gap: 8px; }
+.keyrow input { flex: 1; }
+.keyrow button { margin-top: 6px; min-width: 64px; border: 1px solid var(--line); background: #0E1319; color: var(--muted); border-radius: 10px; font: inherit; }
+
+details.card summary { cursor: pointer; font-weight: 650; list-style: none; }
+details.card summary::-webkit-details-marker { display: none; }
+details.card summary::after { content: "Show"; float: right; color: var(--muted); font-weight: 400; font-size: .86rem; }
+details.card[open] summary::after { content: "Hide"; }
+
+.bar { height: 8px; background: #0E1319; border-radius: 99px; overflow: hidden; margin: 10px 0 8px; }
+.bar div { height: 100%; width: 0; background: var(--amber); transition: width .25s ease; }
+#progressText { color: var(--muted); font-size: .92rem; }
+
+.notes { list-style: none; margin: 0 0 12px; padding: 0; font-size: .9rem; color: var(--muted); }
+.notes li { padding: 4px 0; }
+.notes li.warn { color: var(--bad); }
+textarea#preview {
+  width: 100%;
+  min-height: 240px;
+  background: #0E1319;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: .84rem/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  resize: vertical;
+}
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.tab { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--muted); font: inherit; font-size: .88rem; }
+.tab[aria-pressed=true] { border-color: var(--amber); color: var(--text); background: rgba(245,181,68,.14); }
+
+.out { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.out .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .92rem; }
+.out .sz { color: var(--muted); font-size: .8rem; }
+.btn { border: 1px solid var(--line); background: #0E1319; color: var(--text); border-radius: 10px; padding: 10px 14px; font: inherit; font-weight: 600; min-height: 44px; }
+.btn.primary { background: var(--amber); color: #17140C; border-color: transparent; }
+.actions { display: flex; gap: 8px; margin-top: 12px; }
+.actions .btn { flex: 1; }
+
+.dock {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, var(--bg) 70%, rgba(14,17,22,0));
+  display: flex; gap: 8px; max-width: 640px; margin: 0 auto;
+}
+#go { flex: 1; height: 54px; border: 0; border-radius: 13px; background: var(--amber); color: #17140C; font: inherit; font-size: 1.05rem; font-weight: 700; }
+#go:active { background: var(--amber-hi); }
+#go:disabled { opacity: .5; }
+#stop { height: 54px; padding: 0 20px; border-radius: 13px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; font-weight: 600; }
+[hidden] { display: none !important; }
+
+.toast {
+  position: fixed; left: 16px; right: 16px; bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+  max-width: 608px; margin: 0 auto; padding: 12px 14px; border-radius: 12px;
+  background: #222A36; border: 1px solid var(--line); font-size: .92rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mark i { animation: rise .7s ease-out both; transform-origin: bottom; }
+  .mark i:nth-child(2) { animation-delay: .05s } .mark i:nth-child(3) { animation-delay: .1s }
+  .mark i:nth-child(4) { animation-delay: .15s } .mark i:nth-child(5) { animation-delay: .2s }
+  .mark i:nth-child(6) { animation-delay: .25s } .mark i:nth-child(7) { animation-delay: .3s }
+  @keyframes rise { from { transform: scaleY(.15); opacity: .3 } to { transform: scaleY(1); opacity: 1 } }
+}
+</style>
+</head>
+<body>
+<main>
+
+  <header class="hero">
+    <div class="mark">
+      <i style="height:11px"></i><i style="height:24px"></i><i style="height:17px"></i>
+      <i style="height:32px"></i><i style="height:21px"></i><i style="height:28px"></i><i style="height:9px"></i>
+    </div>
+    <h1>Audio Transcriber Studio</h1>
+    <p>Clean transcripts, tight audio and timed subtitles.</p>
+  </header>
+
+  <section class="card">
+    <h2>Files</h2>
+    <label class="pick" for="file">Choose audio or video</label>
+    <input id="file" type="file" accept="audio/*,video/*" multiple hidden>
+    <ul id="fileList" class="files"></ul>
+    <button id="clearFiles" class="link" hidden>Clear files</button>
+  </section>
+
+  <section class="card">
+    <h2>Output</h2>
+    <div id="formats" class="chips"></div>
+    <p class="hint">Sentence SRT has one cue per sentence. Subtitle SRT and VTT use short, readable cues.</p>
+  </section>
+
+  <section class="card">
+    <h2>Polish</h2>
+
+    <label class="row">
+      <input id="trim" type="checkbox" checked>
+      <span><b>Trim pauses and cut filler words from the audio</b>
+        <small>Creates a trimmed WAV. Subtitle timing matches that WAV, not the original file.</small></span>
+    </label>
+
+    <label class="field">Pause length after trimming <span id="keepVal" class="val">0.20 s</span>
+      <input id="keep" type="range" min="0.1" max="0.6" step="0.05" value="0.2">
+    </label>
+
+    <label class="row">
+      <input id="fillers" type="checkbox" checked>
+      <span><b>Remove filler sounds</b><small>um, uh, er, hmm. English audio only.</small></span>
+    </label>
+
+    <label class="row">
+      <input id="repeats" type="checkbox" checked>
+      <span><b>Remove stutters and repeated short words</b><small>"I I want", "the the".</small></span>
+    </label>
+
+    <label class="row">
+      <input id="silence" type="checkbox" checked>
+      <span><b>Ignore words heard in silence</b><small>Stops the AI from inventing text where nobody speaks.</small></span>
+    </label>
+
+    <label class="field">Extra words to remove
+      <input id="extra" type="text" placeholder="Separate with commas" autocomplete="off" autocapitalize="off">
+    </label>
+  </section>
+
+  <details class="card" id="settings">
+    <summary>Settings</summary>
+
+    <label class="field">Service
+      <select id="provider"></select>
+    </label>
+
+    <label class="field">API key
+      <div class="keyrow">
+        <input id="key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your key">
+        <button id="showKey" type="button">Show</button>
+      </div>
+    </label>
+    <p class="hint" id="keyHint">The key stays on this phone and goes only to the service you picked. Your audio is sent to that service to be transcribed.</p>
+
+    <label class="field">Model
+      <select id="model"></select>
+    </label>
+
+    <label class="field">Spoken language
+      <select id="language"></select>
+    </label>
+
+    <label class="field">Vocabulary hint
+      <textarea id="prompt" rows="2" placeholder="Names, brands or jargon that appear in the audio"></textarea>
+    </label>
+
+    <label class="field">Subtitle line length <span id="charsVal" class="val">42</span>
+      <input id="chars" type="range" min="20" max="80" step="1" value="42">
+    </label>
+
+    <label class="field">Longest subtitle <span id="durVal" class="val">6 s</span>
+      <input id="dur" type="range" min="2" max="12" step="0.5" value="6">
+    </label>
+  </details>
+
+  <section class="card" id="progressCard" hidden>
+    <h2>Working</h2>
+    <div class="bar"><div id="barFill"></div></div>
+    <div id="progressText" aria-live="polite"></div>
+  </section>
+
+  <section class="card" id="results" hidden>
+    <h2>Results</h2>
+    <ul id="notes" class="notes"></ul>
+    <div id="tabs" class="tabs"></div>
+    <textarea id="preview" readonly></textarea>
+    <div class="actions">
+      <button id="copy" class="btn">Copy text</button>
+      <button id="shareAll" class="btn primary">Share all</button>
+    </div>
+    <div id="outFiles"></div>
+  </section>
+
+</main>
+
+<div class="dock">
+  <button id="go">Transcribe</button>
+  <button id="stop" hidden>Stop</button>
+</div>
+<div id="toast" class="toast" hidden role="status"></div>
+
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
