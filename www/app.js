@@ -104,6 +104,10 @@
     return Array.from(document.querySelectorAll('#formats input:checked')).map(i => i.value);
   }
 
+  function updateFmtSummary() {
+    $('fmtSummary').textContent = selectedFormats().join(', ') || 'None selected';
+  }
+
   function loadSettings() {
     PERSIST.forEach(id => {
       const el = $(id);
@@ -156,11 +160,13 @@
     fillModels();
     loadSettings();
     updateReadouts();
+    updateFmtSummary();
 
     // First run: open Settings so the key is easy to find.
     if (!$('key').value) $('settings').open = true;
 
     $('provider').addEventListener('change', () => { fillModels(); saveSettings(); });
+    $('formats').addEventListener('change', updateFmtSummary);
     document.querySelectorAll('#settings input, #settings select, #settings textarea, .card input')
       .forEach(el => el.addEventListener('change', saveSettings));
     ['keep', 'chars', 'dur'].forEach(id => $(id).addEventListener('input', updateReadouts));
@@ -188,7 +194,7 @@
     });
 
     $('copy').addEventListener('click', copyPreview);
-    $('shareAll').addEventListener('click', () => results && shareFiles(results.files));
+    $('downloadAll').addEventListener('click', () => results && downloadFiles(results.files));
   }
 
   // ------------------------------------------------------------- audio
@@ -370,6 +376,7 @@
     const texts = E.buildTexts(kept, opts.formats, lang, opts.chars, opts.dur);
     const textFiles = opts.formats.map(f => ({
       name: base + E.SUFFIX[f],
+      text: texts[f],
       blob: new Blob([texts[f]], { type: 'text/plain;charset=utf-8' })
     }));
 
@@ -508,10 +515,19 @@
       const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = f.name;
       const sz = document.createElement('div'); sz.className = 'sz'; sz.textContent = fmtSize(f.blob.size);
       left.append(nm, sz);
-      const btn = document.createElement('button');
-      btn.className = 'btn'; btn.type = 'button'; btn.textContent = 'Share';
-      btn.addEventListener('click', () => shareFiles([f]));
-      row.append(left, btn);
+      const btns = document.createElement('div');
+      btns.className = 'btns';
+      if (f.text) {
+        const c = document.createElement('button');
+        c.className = 'btn'; c.type = 'button'; c.textContent = 'Copy';
+        c.addEventListener('click', () => copyText(f.text, f.name));
+        btns.appendChild(c);
+      }
+      const d = document.createElement('button');
+      d.className = 'btn'; d.type = 'button'; d.textContent = 'Download';
+      d.addEventListener('click', () => downloadFiles([f]));
+      btns.appendChild(d);
+      row.append(left, btns);
       box.appendChild(row);
     });
 
@@ -527,21 +543,28 @@
     });
   }
 
-  async function copyPreview() {
-    const text = $('preview').value;
+  async function copyText(text, label) {
     if (!text) return toast('Nothing to copy yet.');
     try {
       await navigator.clipboard.writeText(text);
     } catch (e) {
-      const ta = $('preview');
-      ta.removeAttribute('readonly'); ta.select();
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
       try { document.execCommand('copy'); } catch (e2) { /* ignore */ }
-      ta.setAttribute('readonly', ''); 
+      ta.remove();
     }
-    toast('Copied ' + previewFormat + '.');
+    toast('Copied ' + label + '.');
   }
 
-  // ----------------------------------------------------- save and share
+  function copyPreview() {
+    copyText($('preview').value, previewFormat);
+  }
+
+  // ---------------------------------------------------------- download
   const isNative = () => !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
 
   function blobToBase64(blob) {
@@ -553,21 +576,49 @@
     });
   }
 
-  // Writes a file to the app cache in 3 MB pieces (keeps memory low) and returns its URI.
-  async function writeToCache(file) {
+  // Writes a file in 3 MB pieces (keeps memory low). 3 MB is a multiple of 3,
+  // so the base64 pieces join cleanly.
+  async function writeInPieces(directory, path, blob) {
     const FS = Capacitor.Plugins.Filesystem;
-    const path = 'transcripts/' + file.name;
-    const STEP = 3 * 1024 * 1024; // multiple of 3, so base64 pieces join cleanly
-
-    try { await FS.deleteFile({ path, directory: 'CACHE' }); } catch (e) { /* not there yet */ }
-
-    for (let o = 0; o < file.blob.size; o += STEP) {
-      const data = await blobToBase64(file.blob.slice(o, o + STEP));
-      if (o === 0) await FS.writeFile({ path, data, directory: 'CACHE', recursive: true });
-      else await FS.appendFile({ path, data, directory: 'CACHE' });
+    const STEP = 3 * 1024 * 1024;
+    for (let o = 0; o < blob.size; o += STEP) {
+      const data = await blobToBase64(blob.slice(o, o + STEP));
+      if (o === 0) await FS.writeFile({ path, data, directory, recursive: true });
+      else await FS.appendFile({ path, data, directory });
     }
-    const res = await FS.getUri({ path, directory: 'CACHE' });
-    return res.uri;
+  }
+
+  // Saves a normal file on the phone. Tries the Downloads folder first.
+  async function saveToDevice(file) {
+    const FS = Capacitor.Plugins.Filesystem;
+    try { await FS.requestPermissions(); } catch (e) { /* not needed on newer Android */ }
+
+    const targets = [
+      { directory: 'EXTERNAL_STORAGE', path: 'Download/' + file.name, where: 'your Downloads folder' },
+      { directory: 'DOCUMENTS', path: 'AudioTranscriber/' + file.name, where: 'Documents/AudioTranscriber' }
+    ];
+
+    let lastError = null;
+    for (const t of targets) {
+      try {
+        await writeInPieces(t.directory, t.path, file.blob);
+        return t.where;
+      } catch (e) { lastError = e; }
+    }
+    throw lastError || new Error('Could not save the file.');
+  }
+
+  // Last resort only, if the phone blocks direct saving.
+  async function saveMenuFallback(list) {
+    const FS = Capacitor.Plugins.Filesystem;
+    const uris = [];
+    for (const f of list) {
+      const path = 'transcripts/' + f.name;
+      try { await FS.deleteFile({ path, directory: 'CACHE' }); } catch (e) { /* not there yet */ }
+      await writeInPieces('CACHE', path, f.blob);
+      uris.push((await FS.getUri({ path, directory: 'CACHE' })).uri);
+    }
+    await Capacitor.Plugins.Share.share({ title: 'Transcript files', files: uris, dialogTitle: 'Save file' });
   }
 
   function webDownload(file) {
@@ -578,7 +629,7 @@
     setTimeout(() => URL.revokeObjectURL(url), 15000);
   }
 
-  async function shareFiles(list) {
+  async function downloadFiles(list) {
     if (!list || !list.length) return;
 
     if (!isNative()) {
@@ -587,19 +638,20 @@
     }
 
     try {
-      toast('Preparing…', 8000);
-      const uris = [];
-      for (const f of list) uris.push(await writeToCache(f));
-      $('toast').hidden = true;
-      await Capacitor.Plugins.Share.share({
-        title: 'Transcript files',
-        files: uris,
-        dialogTitle: 'Save or share'
-      });
+      toast('Saving…', 10000);
+      let where = '';
+      for (const f of list) where = await saveToDevice(f);
+      toast(list.length > 1
+        ? 'Saved ' + list.length + ' files to ' + where + '.'
+        : 'Saved ' + list[0].name + ' to ' + where + '.', 6000);
     } catch (e) {
-      const m = String((e && e.message) || e);
-      if (/cancel/i.test(m)) return;
-      toast('Could not share: ' + m, 6000);
+      try {
+        toast('This phone blocked direct saving, so the save menu is opening instead.', 6000);
+        await saveMenuFallback(list);
+      } catch (e2) {
+        const m = String((e2 && e2.message) || e2);
+        if (!/cancel/i.test(m)) toast('Could not save: ' + m, 7000);
+      }
     }
   }
 

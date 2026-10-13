@@ -18,14 +18,17 @@
   --radius: 14px;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html { background: var(--bg); }
+html { background: var(--bg); max-width: 100%; overflow-x: hidden; }
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
   font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   padding-top: env(safe-area-inset-top, 0px);
+  max-width: 100%;
+  overflow-x: hidden;
 }
+main > * { min-width: 0; }
 main { max-width: 640px; margin: 0 auto; padding: 8px 16px 130px; }
 
 .hero { padding: 22px 2px 8px; }
@@ -42,7 +45,7 @@ h1 { font-size: 1.75rem; line-height: 1.15; letter-spacing: -.02em; margin: 0; }
   margin-top: 12px;
 }
 h2 { font-size: 1rem; margin: 0 0 10px; font-weight: 650; }
-.hint { color: var(--muted); font-size: .86rem; margin: 4px 0 0; }
+.hint { color: var(--muted); font-size: .86rem; margin: 4px 0 0; overflow-wrap: anywhere; }
 
 .pick {
   display: block;
@@ -57,7 +60,7 @@ h2 { font-size: 1rem; margin: 0 0 10px; font-weight: 650; }
 .pick:active { background: rgba(245,181,68,.08); }
 .files { list-style: none; margin: 10px 0 0; padding: 0; }
 .files li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: .92rem; }
-.files li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files li span:first-child { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .files li span:last-child { color: var(--muted); flex: none; }
 .link { background: none; border: 0; color: var(--muted); padding: 8px 0 0; font: inherit; font-size: .86rem; text-decoration: underline; }
 
@@ -103,13 +106,15 @@ details.card summary { cursor: pointer; font-weight: 650; list-style: none; }
 details.card summary::-webkit-details-marker { display: none; }
 details.card summary::after { content: "Show"; float: right; color: var(--muted); font-weight: 400; font-size: .86rem; }
 details.card[open] summary::after { content: "Hide"; }
+details.card[open] > summary { margin-bottom: 12px; }
+.sum { display: block; margin-top: 2px; font-weight: 400; font-size: .86rem; color: var(--muted); overflow-wrap: anywhere; }
 
 .bar { height: 8px; background: #0E1319; border-radius: 99px; overflow: hidden; margin: 10px 0 8px; }
 .bar div { height: 100%; width: 0; background: var(--amber); transition: width .25s ease; }
 #progressText { color: var(--muted); font-size: .92rem; }
 
 .notes { list-style: none; margin: 0 0 12px; padding: 0; font-size: .9rem; color: var(--muted); }
-.notes li { padding: 4px 0; }
+.notes li { padding: 4px 0; overflow-wrap: anywhere; }
 .notes li.warn { color: var(--bad); }
 textarea#preview {
   width: 100%;
@@ -121,18 +126,22 @@ textarea#preview {
   padding: 10px 12px;
   font: .84rem/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   resize: vertical;
+  max-width: 100%;
 }
 .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .tab { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--muted); font: inherit; font-size: .88rem; }
 .tab[aria-pressed=true] { border-color: var(--amber); color: var(--text); background: rgba(245,181,68,.14); }
 
 .out { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.out > div:first-child { min-width: 0; flex: 1; }
+.out .btns { display: flex; gap: 8px; flex: none; }
+.out .btn { padding: 10px 12px; }
 .out .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .92rem; }
 .out .sz { color: var(--muted); font-size: .8rem; }
 .btn { border: 1px solid var(--line); background: #0E1319; color: var(--text); border-radius: 10px; padding: 10px 14px; font: inherit; font-weight: 600; min-height: 44px; }
 .btn.primary { background: var(--amber); color: #17140C; border-color: transparent; }
 .actions { display: flex; gap: 8px; margin-top: 12px; }
-.actions .btn { flex: 1; }
+.actions .btn { flex: 1; min-width: 0; }
 
 .dock {
   position: fixed; left: 0; right: 0; bottom: 0;
@@ -181,14 +190,20 @@ textarea#preview {
     <button id="clearFiles" class="link" hidden>Clear files</button>
   </section>
 
-  <section class="card">
-    <h2>Output</h2>
+  <details class="card" id="outputBox">
+    <summary>Output<span class="sum" id="fmtSummary"></span></summary>
     <div id="formats" class="chips"></div>
     <p class="hint">Sentence SRT has one cue per sentence. Subtitle SRT and VTT use short, readable cues.</p>
+  </details>
+
+  <section class="card" id="progressCard" hidden>
+    <h2>Working</h2>
+    <div class="bar"><div id="barFill"></div></div>
+    <div id="progressText" aria-live="polite"></div>
   </section>
 
-  <section class="card">
-    <h2>Polish</h2>
+  <details class="card" id="polishBox">
+    <summary>Polish</summary>
 
     <label class="row">
       <input id="trim" type="checkbox" checked>
@@ -218,7 +233,7 @@ textarea#preview {
     <label class="field">Extra words to remove
       <input id="extra" type="text" placeholder="Separate with commas" autocomplete="off" autocapitalize="off">
     </label>
-  </section>
+  </details>
 
   <details class="card" id="settings">
     <summary>Settings</summary>
@@ -256,12 +271,6 @@ textarea#preview {
     </label>
   </details>
 
-  <section class="card" id="progressCard" hidden>
-    <h2>Working</h2>
-    <div class="bar"><div id="barFill"></div></div>
-    <div id="progressText" aria-live="polite"></div>
-  </section>
-
   <section class="card" id="results" hidden>
     <h2>Results</h2>
     <ul id="notes" class="notes"></ul>
@@ -269,7 +278,7 @@ textarea#preview {
     <textarea id="preview" readonly></textarea>
     <div class="actions">
       <button id="copy" class="btn">Copy text</button>
-      <button id="shareAll" class="btn primary">Share all</button>
+      <button id="downloadAll" class="btn primary">Download all</button>
     </div>
     <div id="outFiles"></div>
   </section>
